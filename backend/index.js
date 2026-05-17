@@ -221,10 +221,10 @@ app.post("/api/ai/shortlist", async (req, res) => {
 
     try {
 
-        // Get all candidates
+        // Get candidates
         const candidates = await Candidate.find();
 
-        // Create AI prompt
+        // Prompt
         const prompt = `
 You are an expert HR recruiter.
 
@@ -240,13 +240,15 @@ Tasks:
 4. Give final recommendation
 `;
 
-        // OpenRouter API Call
+        // API Call
         const response = await axios.post(
 
             "https://openrouter.ai/api/v1/chat/completions",
 
             {
-                model: "deepseek/deepseek-chat-v3-0324:free",
+
+                model:
+                    "deepseek/deepseek-chat-v3-0324:free",
 
                 messages: [
                     {
@@ -254,23 +256,61 @@ Tasks:
                         content: prompt
                     }
                 ]
+
             },
 
             {
+
                 headers: {
 
                     Authorization:
                         `Bearer ${process.env.OPENROUTER_API_KEY}`,
 
-                    "Content-Type": "application/json"
+                    "Content-Type":
+                        "application/json"
 
-                }
+                },
+
+                timeout: 60000
+
             }
 
         );
 
-        // Send AI response
-        res.json(response.data);
+        // Debug
+        console.log(
+            JSON.stringify(response.data, null, 2)
+        );
+
+        // Safe extraction
+        const aiContent =
+            response.data?.choices?.[0]?.message?.content;
+
+        // Validation
+        if (!aiContent) {
+
+            return res.status(500).json({
+
+                success: false,
+
+                message:
+                    "AI returned empty response",
+
+                fullResponse:
+                    response.data
+
+            });
+
+        }
+
+        // Success response
+        res.json({
+
+            success: true,
+
+            result: aiContent
+
+        });
 
     }
     catch (error) {
@@ -282,7 +322,10 @@ Tasks:
 
         res.status(500).json({
 
-            message: "AI Shortlisting Failed",
+            success: false,
+
+            message:
+                "AI Shortlisting Failed",
 
             error:
                 error.response?.data || error.message
