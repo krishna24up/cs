@@ -49,6 +49,81 @@ const isRetryableOpenRouterError = (error) => {
     return /no endpoints|not found|unavailable|rate limit/i.test(message);
 };
 
+const isOpenRouterRateLimitError = (error) => {
+    const message =
+        error.response?.data?.error?.message ||
+        error.response?.data?.message ||
+        error.message ||
+        "";
+
+    return error.response?.status === 429 || /rate limit|free-models-per-day/i.test(message);
+};
+
+const buildRuleBasedShortlist = (candidates, requiredSkills, minExperience) => {
+    const requiredSkillSet =
+        new Set(requiredSkills.map(normalizeSkill));
+
+    return candidates
+        .map((candidate) => {
+            const matchedSkills = candidate.skills.filter((skill) =>
+                requiredSkillSet.has(normalizeSkill(skill))
+            );
+
+            const missingSkills = requiredSkills.filter((skill) =>
+                !candidate.skills.map(normalizeSkill).includes(normalizeSkill(skill))
+            );
+
+            const skillScore = requiredSkills.length
+                ? matchedSkills.length / requiredSkills.length
+                : 0;
+
+            const experienceScore =
+                candidate.experience >= minExperience ? 1 : 0;
+
+            const matchScore =
+                Math.round(((skillScore * 0.8) + (experienceScore * 0.2)) * 100);
+
+            return {
+                name: candidate.name,
+                email: candidate.email,
+                skills: candidate.skills,
+                experience: candidate.experience,
+                matchedSkills,
+                missingSkills,
+                matchScore
+            };
+        })
+        .sort((a, b) => b.matchScore - a.matchScore);
+};
+
+const formatRuleBasedShortlist = (rankedCandidates, minExperience) => {
+    const lines = [
+        "OpenRouter free quota is exhausted, so this is a rule-based shortlist instead of an AI response.",
+        "",
+        "Ranked candidates:"
+    ];
+
+    rankedCandidates.forEach((candidate, index) => {
+        lines.push(
+            `${index + 1}. ${candidate.name} - ${candidate.matchScore}% match`,
+            `   Experience: ${candidate.experience} years (${candidate.experience >= minExperience ? "meets" : "below"} requirement)`,
+            `   Matched skills: ${candidate.matchedSkills.length ? candidate.matchedSkills.join(", ") : "None"}`,
+            `   Missing skills: ${candidate.missingSkills.length ? candidate.missingSkills.join(", ") : "None"}`
+        );
+    });
+
+    const bestCandidate = rankedCandidates[0];
+
+    if (bestCandidate) {
+        lines.push(
+            "",
+            `Final recommendation: ${bestCandidate.name} is currently the best fit based on skill overlap and experience.`
+        );
+    }
+
+    return lines.join("\n");
+};
+
 
 // ==========================================
 // MIDDLEWARE
@@ -444,6 +519,34 @@ Tasks:
         const openRouterError =
             error.response?.data?.error?.message ||
             error.response?.data?.message;
+
+        if (isOpenRouterRateLimitError(error)) {
+
+            const body = req.body || {};
+            const requiredSkills = normalizeSkills(body.requiredSkills);
+            const minExperience = Number(body.minExperience) || 0;
+            const candidates = await Candidate.find().lean();
+            const rankedCandidates =
+                buildRuleBasedShortlist(candidates, requiredSkills, minExperience);
+
+            return res.status(200).json({
+
+                success: true,
+
+                aiUnavailable: true,
+
+                message:
+                    openRouterError || "OpenRouter rate limit exceeded.",
+
+                result:
+                    formatRuleBasedShortlist(rankedCandidates, minExperience),
+
+                candidates:
+                    rankedCandidates
+
+            });
+
+        }
 
         res.status(500).json({
 
