@@ -46,7 +46,7 @@ function CandidateForm() {
             // Send data to backend
             await axios.post(
 
-                "http://localhost:5000/api/candidates",
+                "https://candidate-shortlisting-backend.onrender.com/api/candidates",
 
                 payload
 
