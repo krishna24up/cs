@@ -10,6 +10,10 @@ import "./App.css";
 function App() {
 
     const [results, setResults] = useState([]);
+    const [jobRequirement, setJobRequirement] = useState({
+        requiredSkills: [],
+        minExperience: 0
+    });
 
     return (
 
@@ -23,7 +27,10 @@ function App() {
 
             <hr />
 
-            <JobForm setResults={setResults} />
+            <JobForm
+                setResults={setResults}
+                setJobRequirement={setJobRequirement}
+            />
 
             <hr />
 
@@ -31,7 +38,7 @@ function App() {
 
             <hr />
 
-            <AIShortlist />
+            <AIShortlist jobRequirement={jobRequirement} />
 
         </div>
 

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import axios from "axios";
+import api from "../api";
 
 function CandidateForm() {
 
@@ -39,18 +39,17 @@ function CandidateForm() {
 
                 ...formData,
 
-                skills: formData.skills.split(",")
+                skills: formData.skills
+                    .split(",")
+                    .map((skill) => skill.trim())
+                    .filter(Boolean),
+
+                experience: Number(formData.experience)
 
             };
 
             // Send data to backend
-            await axios.post(
-
-                "https://cs-nlac.onrender.com/api/candidates",
-
-                payload
-
-            );
+            await api.post("/api/candidates", payload);
 
             alert("Candidate Added Successfully");
 

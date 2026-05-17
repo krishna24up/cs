@@ -1,7 +1,7 @@
 import { useState } from "react";
-import axios from "axios";
+import api from "../api";
 
-function JobForm({ setResults }) {
+function JobForm({ setResults, setJobRequirement }) {
 
     const [requiredSkills, setRequiredSkills] = useState("");
 
@@ -13,22 +13,23 @@ function JobForm({ setResults }) {
 
         try {
 
-            const response = await axios.post(
+            const payload = {
 
-                "https://cs-nlac.onrender.com/api/match",
+                requiredSkills:
+                    requiredSkills
+                        .split(",")
+                        .map((skill) => skill.trim())
+                        .filter(Boolean),
 
-                {
+                minExperience: Number(minExperience)
 
-                    requiredSkills:
-                        requiredSkills.split(","),
+            };
 
-                    minExperience
-
-                }
-
-            );
+            const response = await api.post("/api/match", payload);
 
             setResults(response.data);
+
+            setJobRequirement(payload);
 
         }
         catch (error) {

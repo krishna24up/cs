@@ -22,6 +22,16 @@ dotenv.config();
 
 const app = express();
 
+const normalizeSkills = (skills = []) => {
+    return skills
+        .map((skill) => String(skill).trim())
+        .filter(Boolean);
+};
+
+const normalizeSkill = (skill) => {
+    return String(skill).trim().toLowerCase();
+};
+
 
 // ==========================================
 // MIDDLEWARE
@@ -155,7 +165,11 @@ app.post("/api/match", async (req, res) => {
 
     try {
 
-        const { requiredSkills, minExperience } = req.body;
+        const body = req.body || {};
+        const requiredSkills = normalizeSkills(body.requiredSkills);
+        const minExperience = Number(body.minExperience) || 0;
+        const requiredSkillSet =
+            new Set(requiredSkills.map(normalizeSkill));
 
         const candidates = await Candidate.find();
 
@@ -163,12 +177,14 @@ app.post("/api/match", async (req, res) => {
 
             // Find matched skills
             const matchedSkills = candidate.skills.filter(skill =>
-                requiredSkills.includes(skill)
+                requiredSkillSet.has(normalizeSkill(skill))
             );
 
             // Calculate skill score
             const skillScore =
-                matchedSkills.length / requiredSkills.length;
+                requiredSkills.length
+                    ? matchedSkills.length / requiredSkills.length
+                    : 0;
 
             // Experience check
             const experienceScore =
@@ -221,23 +237,58 @@ app.post("/api/ai/shortlist", async (req, res) => {
 
     try {
 
+        if (!process.env.OPENROUTER_API_KEY) {
+
+            return res.status(500).json({
+
+                success: false,
+
+                message:
+                    "OPENROUTER_API_KEY is missing. Add it in Render environment variables."
+
+            });
+
+        }
+
+        const body = req.body || {};
+        const requiredSkills = normalizeSkills(body.requiredSkills);
+        const minExperience = Number(body.minExperience) || 0;
+
         // Get candidates
-        const candidates = await Candidate.find();
+        const candidates = await Candidate.find().lean();
+
+        if (candidates.length === 0) {
+
+            return res.status(404).json({
+
+                success: false,
+
+                message:
+                    "No candidates found. Add candidates before running AI shortlisting."
+
+            });
+
+        }
 
         // Prompt
         const prompt = `
 You are an expert HR recruiter.
 
-Analyze these candidates carefully.
+Analyze these candidates carefully against the job requirements.
+
+Job Requirements:
+Required skills: ${requiredSkills.length ? requiredSkills.join(", ") : "Not provided"}
+Minimum experience: ${minExperience} years
 
 Candidates:
 ${JSON.stringify(candidates, null, 2)}
 
 Tasks:
-1. Rank candidates
-2. Suggest best candidates
-3. Explain why each candidate is suitable
-4. Give final recommendation
+1. Rank candidates from best to weakest fit
+2. Mention matched and missing required skills
+3. Consider the minimum experience requirement
+4. Explain why each candidate is suitable or not suitable
+5. Give one final recommendation
 `;
 
         // API Call
@@ -248,9 +299,15 @@ Tasks:
             {
 
                 model:
-                    "deepseek/deepseek-chat-v3-0324:free",
+                    process.env.OPENROUTER_MODEL ||
+                    "qwen/qwen3-32b:free",
 
                 messages: [
+                    {
+                        role: "system",
+                        content:
+                            "Return a concise recruiter-style shortlist with clear rankings."
+                    },
                     {
                         role: "user",
                         content: prompt
@@ -267,7 +324,13 @@ Tasks:
                         `Bearer ${process.env.OPENROUTER_API_KEY}`,
 
                     "Content-Type":
-                        "application/json"
+                        "application/json",
+
+                    "HTTP-Referer":
+                        process.env.APP_URL || "http://localhost:5173",
+
+                    "X-Title":
+                        "Candidate Shortlisting System"
 
                 },
 
@@ -320,12 +383,16 @@ Tasks:
             error.response?.data || error.message
         );
 
+        const openRouterError =
+            error.response?.data?.error?.message ||
+            error.response?.data?.message;
+
         res.status(500).json({
 
             success: false,
 
             message:
-                "AI Shortlisting Failed",
+                openRouterError || "AI Shortlisting Failed",
 
             error:
                 error.response?.data || error.message

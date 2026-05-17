@@ -1,23 +1,29 @@
 import { useState } from "react";
-import axios from "axios";
+import api from "../api";
 
-function AIShortlist() {
+function AIShortlist({ jobRequirement }) {
 
     const [aiResponse, setAIResponse] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
 
     const handleAI = async () => {
 
         try {
 
-            const response = await axios.post(
+            setIsLoading(true);
+            setAIResponse("");
 
-                "https://cs-nlac.onrender.com/api/ai/shortlist"
+            const response = await api.post(
+
+                "/api/ai/shortlist",
+
+                jobRequirement
 
             );
 
             const message =
 
-                response.data.choices[0].message.content;
+                response.data.result || "No AI recommendation returned.";
 
             setAIResponse(message);
 
@@ -26,7 +32,17 @@ function AIShortlist() {
 
             console.log(error);
 
-            alert("AI Shortlisting Failed");
+            const message =
+                error.response?.data?.message ||
+                error.response?.data?.error?.message ||
+                "AI Shortlisting Failed";
+
+            alert(message);
+
+        }
+        finally {
+
+            setIsLoading(false);
 
         }
 
@@ -38,9 +54,9 @@ function AIShortlist() {
 
             <h2>AI Candidate Ranking</h2>
 
-            <button onClick={handleAI}>
+            <button onClick={handleAI} disabled={isLoading}>
 
-                AI Shortlist
+                {isLoading ? "Shortlisting..." : "AI Shortlist"}
 
             </button>
 
