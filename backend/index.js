@@ -32,6 +32,23 @@ const normalizeSkill = (skill) => {
     return String(skill).trim().toLowerCase();
 };
 
+const getOpenRouterModels = () => {
+    return [...new Set([
+        process.env.OPENROUTER_MODEL,
+        "openrouter/free"
+    ].filter(Boolean))];
+};
+
+const isRetryableOpenRouterError = (error) => {
+    const message =
+        error.response?.data?.error?.message ||
+        error.response?.data?.message ||
+        error.message ||
+        "";
+
+    return /no endpoints|not found|unavailable|rate limit/i.test(message);
+};
+
 
 // ==========================================
 // MIDDLEWARE
@@ -291,54 +308,93 @@ Tasks:
 5. Give one final recommendation
 `;
 
-        // API Call
-        const response = await axios.post(
-
-            "https://openrouter.ai/api/v1/chat/completions",
-
+        const messages = [
             {
-
-                model:
-                    process.env.OPENROUTER_MODEL ||
-                    "qwen/qwen3-32b:free",
-
-                messages: [
-                    {
-                        role: "system",
-                        content:
-                            "Return a concise recruiter-style shortlist with clear rankings."
-                    },
-                    {
-                        role: "user",
-                        content: prompt
-                    }
-                ]
-
+                role: "system",
+                content:
+                    "Return a concise recruiter-style shortlist with clear rankings."
             },
-
             {
+                role: "user",
+                content: prompt
+            }
+        ];
 
-                headers: {
+        const headers = {
 
-                    Authorization:
-                        `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            Authorization:
+                `Bearer ${process.env.OPENROUTER_API_KEY}`,
 
-                    "Content-Type":
-                        "application/json",
+            "Content-Type":
+                "application/json",
 
-                    "HTTP-Referer":
-                        process.env.APP_URL || "http://localhost:5173",
+            "HTTP-Referer":
+                process.env.APP_URL || "http://localhost:5173",
 
-                    "X-Title":
-                        "Candidate Shortlisting System"
+            "X-Title":
+                "Candidate Shortlisting System"
 
-                },
+        };
 
-                timeout: 60000
+        let response;
+        let selectedModel;
+        let lastError;
+
+        for (const model of getOpenRouterModels()) {
+
+            try {
+
+                selectedModel = model;
+
+                response = await axios.post(
+
+                    "https://openrouter.ai/api/v1/chat/completions",
+
+                    {
+
+                        model,
+
+                        messages
+
+                    },
+
+                    {
+
+                        headers,
+
+                        timeout: 60000
+
+                    }
+
+                );
+
+                break;
+
+            }
+            catch (error) {
+
+                lastError = error;
+
+                if (!isRetryableOpenRouterError(error)) {
+
+                    throw error;
+
+                }
+
+                console.log(
+                    `OpenRouter model failed (${model}), trying fallback:`,
+                    error.response?.data || error.message
+                );
 
             }
 
-        );
+        }
+
+        if (!response) {
+
+            throw lastError || new Error("OpenRouter request failed");
+
+        }
 
         // Debug
         console.log(
@@ -370,6 +426,8 @@ Tasks:
         res.json({
 
             success: true,
+
+            model: selectedModel,
 
             result: aiContent
 
