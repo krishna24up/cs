@@ -246,7 +246,7 @@ Tasks:
             "https://openrouter.ai/api/v1/chat/completions",
 
             {
-                model: "openai/gpt-4o-mini",
+                model: "openrouter/free",
 
                 messages: [
                     {
